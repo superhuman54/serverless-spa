@@ -20,7 +20,7 @@ service: my-single-page-app
 provider:
   name: aws
   runtime: nodejs8.10
-#  stage: dev
+  stage: ${opt:stage, 'dev'}
   region: ap-northeast-2
   environment:
     STAGE: ${self:provider.stage}
@@ -60,8 +60,8 @@ provider:
 
 # s3 event, dynamoDB trigger
 functions:
-  hello:
-    handler: handler.hello
+  web:
+    handler: webHandler.handler
     events:
     - http:
         path: /
@@ -71,6 +71,18 @@ functions:
         path: /{proxy+}
         method: ANY
         cors: true
+  api:
+    handler: apiHandler.handler
+    events:
+    - http:
+        path: /api
+        method: ANY
+        cors: true
+    - http:
+        path: /api/{proxy+}
+        method: ANY
+        cors: true
+    role: apiRole
 
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
@@ -116,5 +128,53 @@ functions:
 #     NewOutput:
 #       Description: "Description for the output"
 #       Value: "Some output value"
+resources:
+  Resources:
+    contactTable: # dynamodb table logicalName
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: contact
+        AttributeDefinitions:
+        - AttributeName: createdAt
+          AttributeType: N
+        KeySchema:
+        - AttributeName: createdAt
+          KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+    apiRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ApiRole
+        Path: "/serverless-spa/api/"
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+        Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: arn:aws:logs:*:*:*
+        - PolicyName: forDynamo
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - dynamodb:PutItem
+              Resource:
+                Fn::GetAtt: contactTable.Arn # dynamodb table logicalName
+
 plugins:
 - serverless-offline
